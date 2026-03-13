@@ -1,0 +1,20 @@
+packages:
+  "framer-motion": "For smooth page transitions and interactive element animations"
+  "react-markdown": "To render rich markdown output from the AI responses"
+  "remark-gfm": "For github-flavored markdown support like tables and lists"
+  "react-syntax-highlighter": "For beautiful syntax highlighting in code generation blocks"
+  "@tailwindcss/typography": "For prose styling of the generated markdown content"
+  "clsx": "For safe tailwind class merging"
+  "tailwind-merge": "For resolving tailwind class conflicts"
+
+images:
+  - path: "artifacts/ai-saas/public/images/logo-icon.png"
+    description: "Minimal modern 3D abstract geometric logo icon in glowing indigo and purple on a completely transparent background"
+    aspect_ratio: "1:1"
+  - path: "artifacts/ai-saas/public/images/hero-bg.png"
+    description: "Abstract dark background with subtle glowing purple and deep indigo glassmorphism orbs, volumetric lighting, and subtle noise texture"
+    aspect_ratio: "16:9"
+
+notes:
+  - Frontend utilizes SSE streaming for AI responses requiring fetch + TextDecoder parsing
+  - Assumes @workspace/replit-auth-web provides useAuth hook with user, login, logout, isAuthenticated
