@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAiStream } from "@/hooks/use-ai-stream";
 import { useListOpenaiConversations, useGetOpenaiConversation, useCreateOpenaiConversation } from "@workspace/api-client-react";
+import { ModelSelector, type AIModel } from "@/components/ui/model-selector";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
@@ -12,14 +13,14 @@ export default function ChatAssistant() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
+  const [aiModel, setAiModel] = useState<AIModel>("openai");
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
   const { data: convs, refetch: refetchConvs } = useListOpenaiConversations();
   const { data: activeConv } = useGetOpenaiConversation(activeId!, { query: { enabled: !!activeId } });
   const createMutation = useCreateOpenaiConversation();
   const { content, isLoading, generate, setContent } = useAiStream();
 
-  // Load active conversation messages
   useEffect(() => {
     if (activeConv) {
       setMessages(activeConv.messages || []);
@@ -28,52 +29,62 @@ export default function ChatAssistant() {
     }
   }, [activeConv, activeId]);
 
-  // Auto-scroll to bottom of chat
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, content]);
 
-  // Handle stream completion logic
   const prevLoading = useRef(isLoading);
   useEffect(() => {
     if (prevLoading.current && !isLoading && content) {
-      setMessages(prev => [...prev, { role: 'assistant', content, id: Date.now() }]);
-      setContent('');
+      setMessages(prev => [...prev, { role: "assistant", content, id: Date.now() }]);
+      setContent("");
     }
     prevLoading.current = isLoading;
   }, [isLoading, content, setContent]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    
+
     const userText = input;
     setInput("");
-    
+
     let targetId = activeId;
-    
+
     if (!targetId) {
-      // Create new chat first if none active
       try {
         const newConv = await createMutation.mutateAsync({ data: { title: userText.slice(0, 40) } });
         targetId = newConv.id;
         setActiveId(targetId);
         refetchConvs();
-        setMessages([{ role: 'user', content: userText, id: Date.now() }]);
-      } catch (err) {
-        return; // handle error via toast in mutation if added
+        setMessages([{ role: "user", content: userText, id: Date.now() }]);
+      } catch {
+        return;
       }
     } else {
-      setMessages(prev => [...prev, { role: 'user', content: userText, id: Date.now() }]);
+      setMessages(prev => [...prev, { role: "user", content: userText, id: Date.now() }]);
     }
 
-    // Call custom SSE endpoint
-    await generate(`/api/openai/conversations/${targetId}/messages`, { content: userText });
+    await generate(`/api/openai/conversations/${targetId}/messages`, {
+      content: userText,
+      aiModel,
+    });
+  };
+
+  const handleDeleteConv = async (id: number) => {
+    try {
+      await fetch(`/api/openai/conversations/${id}`, { method: "DELETE", credentials: "include" });
+      if (activeId === id) {
+        setActiveId(null);
+        setMessages([]);
+      }
+      refetchConvs();
+    } catch {}
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -82,50 +93,60 @@ export default function ChatAssistant() {
   return (
     <div className="max-w-[1400px] mx-auto h-[calc(100vh-8rem)] min-h-[500px]">
       <div className="flex h-full gap-6">
-        
-        {/* Sidebar - Conversation List */}
-        <motion.div 
+
+        {/* Sidebar */}
+        <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           className="w-72 glass-panel rounded-2xl flex-col hidden md:flex overflow-hidden"
         >
-          <div className="p-4 border-b border-white/5">
-            <Button 
-              onClick={() => setActiveId(null)} 
+          <div className="p-4 border-b border-white/5 space-y-3">
+            <Button
+              onClick={() => { setActiveId(null); setMessages([]); }}
               className="w-full bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30 hover:text-white border border-indigo-500/20"
             >
               <Plus className="w-4 h-4 mr-2" /> New Chat
             </Button>
+            <ModelSelector value={aiModel} onChange={setAiModel} className="text-[10px]" />
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
             {convs?.map(c => (
-              <button 
+              <div
                 key={c.id}
-                onClick={() => setActiveId(c.id)} 
                 className={cn(
-                  "w-full text-left px-3 py-3 rounded-xl text-sm transition-all duration-200 truncate", 
-                  activeId === c.id 
-                    ? "bg-indigo-500/20 text-indigo-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] border border-indigo-500/20" 
+                  "group flex items-center gap-2 w-full px-3 py-3 rounded-xl text-sm transition-all duration-200",
+                  activeId === c.id
+                    ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/20"
                     : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
                 )}
               >
-                {c.title || "New Conversation"}
-              </button>
+                <button
+                  className="flex-1 text-left truncate"
+                  onClick={() => setActiveId(c.id)}
+                >
+                  {c.title || "New Conversation"}
+                </button>
+                <button
+                  onClick={() => handleDeleteConv(c.id)}
+                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             ))}
             {(!convs || convs.length === 0) && (
-              <div className="text-center text-xs text-muted-foreground p-4">No history found.</div>
+              <div className="text-center text-xs text-muted-foreground p-4">No conversations yet.</div>
             )}
           </div>
         </motion.div>
 
-        {/* Main Chat Area */}
-        <motion.div 
+        {/* Chat area */}
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex-1 glass-panel rounded-2xl flex flex-col overflow-hidden relative"
         >
-          {/* Header */}
-          <div className="h-16 border-b border-white/5 bg-background/40 flex items-center px-6 shadow-sm">
+          <div className="h-16 border-b border-white/5 bg-background/40 flex items-center justify-between px-6 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
                 <MessageSquare className="w-4 h-4" />
@@ -134,27 +155,30 @@ export default function ChatAssistant() {
                 {activeId ? (convs?.find(c => c.id === activeId)?.title || "Conversation") : "New Chat"}
               </h2>
             </div>
+            {/* Mobile model selector */}
+            <div className="flex md:hidden">
+              <ModelSelector value={aiModel} onChange={setAiModel} className="text-[10px] w-52" />
+            </div>
           </div>
 
-          {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
             {messages.length === 0 && !isLoading && !content && (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground/50 m-auto text-center max-w-sm">
                 <MessageSquare className="w-16 h-16 mb-4 opacity-20" />
                 <h3 className="text-lg font-medium text-white/70 mb-2">How can I help you today?</h3>
-                <p className="text-sm">Type a message below to start a conversation with the AI assistant.</p>
+                <p className="text-sm">Type a message below to start a conversation. Select GPT-4o or Gemini 2.0 Flash from the sidebar.</p>
               </div>
             )}
 
             {messages.map(m => (
-              <div key={m.id} className={cn("flex w-full", m.role === 'user' ? "justify-end" : "justify-start")}>
+              <div key={m.id} className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
                 <div className={cn(
-                  "max-w-[85%] rounded-2xl px-5 py-4 shadow-md", 
-                  m.role === 'user' 
-                    ? "bg-indigo-600 text-white rounded-br-sm" 
+                  "max-w-[85%] rounded-2xl px-5 py-4 shadow-md",
+                  m.role === "user"
+                    ? "bg-indigo-600 text-white rounded-br-sm"
                     : "bg-[#1E1E24] border border-white/5 text-white/90 rounded-bl-sm"
                 )}>
-                  {m.role === 'user' ? (
+                  {m.role === "user" ? (
                     <div className="whitespace-pre-wrap">{m.content}</div>
                   ) : (
                     <MarkdownRenderer content={m.content} className="prose-sm md:prose-base" />
@@ -163,7 +187,6 @@ export default function ChatAssistant() {
               </div>
             ))}
 
-            {/* Streaming message preview */}
             {(isLoading || content) && (
               <div className="flex w-full justify-start">
                 <div className="max-w-[85%] rounded-2xl px-5 py-4 shadow-md bg-[#1E1E24] border border-white/5 text-white/90 rounded-bl-sm">
@@ -171,9 +194,9 @@ export default function ChatAssistant() {
                     <MarkdownRenderer content={content} className="prose-sm md:prose-base" />
                   ) : (
                     <div className="flex space-x-2 h-6 items-center px-2">
-                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: "300ms" }} />
                     </div>
                   )}
                 </div>
@@ -181,21 +204,20 @@ export default function ChatAssistant() {
             )}
           </div>
 
-          {/* Input Area */}
           <div className="p-4 bg-background/60 border-t border-white/5">
             <div className="relative max-w-4xl mx-auto flex items-end gap-3 bg-card border border-white/10 rounded-2xl p-2 shadow-xl focus-within:ring-2 focus-within:ring-indigo-500/50 transition-all">
-              <Textarea 
-                value={input} 
-                onChange={e => setInput(e.target.value)} 
+              <Textarea
+                value={input}
+                onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="min-h-[44px] max-h-[200px] border-0 focus-visible:ring-0 resize-none bg-transparent py-3" 
-                placeholder="Message AI Assistant... (Shift+Enter for newline)" 
+                className="min-h-[44px] max-h-[200px] border-0 focus-visible:ring-0 resize-none bg-transparent py-3"
+                placeholder="Message AI Assistant... (Shift+Enter for newline)"
               />
-              <Button 
-                onClick={handleSend} 
-                disabled={!input.trim() || isLoading} 
-                size="icon" 
-                className="mb-1 mr-1 h-10 w-10 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 active-elevate-2 hover-elevate border-0"
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                size="icon"
+                className="mb-1 mr-1 h-10 w-10 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 border-0"
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
@@ -205,7 +227,7 @@ export default function ChatAssistant() {
             </div>
           </div>
         </motion.div>
-        
+
       </div>
     </div>
   );

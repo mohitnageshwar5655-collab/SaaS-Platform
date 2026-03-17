@@ -1,27 +1,31 @@
-import { useState } from "react";
-import { useAiStream } from "@/hooks/use-ai-stream";
+import { useState, useCallback } from "react";
+import { useAiStream, type UsageInfo } from "@/hooks/use-ai-stream";
+import { ModelSelector, type AIModel } from "@/components/ui/model-selector";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Loader2, Mail, Sparkles, Copy, CheckCheck } from "lucide-react";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function EmailGenerator() {
-  const { content, isLoading, generate } = useAiStream();
+  const queryClient = useQueryClient();
+  const [aiModel, setAiModel] = useState<AIModel>("openai");
+
+  const onUsageUpdate = useCallback((usage: UsageInfo) => {
+    queryClient.invalidateQueries({ queryKey: ["getUsageStatus"] });
+  }, [queryClient]);
+
+  const { content, isLoading, isLimitReached, generate } = useAiStream(onUsageUpdate);
   const [prompt, setPrompt] = useState("");
   const [tone, setTone] = useState("professional");
   const [language, setLanguage] = useState("English");
   const [copied, setCopied] = useState(false);
 
   const handleGenerate = () => {
-    if (!prompt) return;
-    generate("/api/tools/generate", {
-      toolType: "email",
-      prompt,
-      tone,
-      language
-    });
+    if (!prompt || isLimitReached) return;
+    generate("/api/tools/generate", { toolType: "email", prompt, tone, language, aiModel });
   };
 
   const copyToClipboard = () => {
@@ -44,28 +48,32 @@ export default function EmailGenerator() {
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Form Panel */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="lg:col-span-4 space-y-6 glass-panel p-6 rounded-2xl"
+          className="lg:col-span-4 space-y-5 glass-panel p-6 rounded-2xl"
         >
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-white/60 uppercase tracking-wider">AI Model</Label>
+            <ModelSelector value={aiModel} onChange={setAiModel} />
+          </div>
+
           <div className="space-y-3">
             <Label className="text-sm font-semibold text-white/80">What is this email about?</Label>
             <Textarea
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               placeholder="e.g. Following up on the marketing proposal from last week..."
-              className="h-40 bg-background/50 border-white/10 focus-visible:ring-blue-500 text-base"
+              className="h-36 bg-background/50 border-white/10 focus-visible:ring-blue-500 text-base"
             />
           </div>
 
           <div className="space-y-3">
             <Label className="text-sm font-semibold text-white/80">Tone of Voice</Label>
-            <select 
-              value={tone} 
+            <select
+              value={tone}
               onChange={e => setTone(e.target.value)}
-              className="flex h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-background/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="flex h-11 w-full rounded-xl border border-white/10 bg-background/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             >
               <option value="professional">Professional & Formal</option>
               <option value="casual">Casual & Friendly</option>
@@ -77,10 +85,10 @@ export default function EmailGenerator() {
 
           <div className="space-y-3">
             <Label className="text-sm font-semibold text-white/80">Language</Label>
-            <select 
-              value={language} 
+            <select
+              value={language}
               onChange={e => setLanguage(e.target.value)}
-              className="flex h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-background/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="flex h-11 w-full rounded-xl border border-white/10 bg-background/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             >
               <option value="English">English</option>
               <option value="Spanish">Spanish</option>
@@ -95,15 +103,14 @@ export default function EmailGenerator() {
 
           <Button
             onClick={handleGenerate}
-            disabled={isLoading || !prompt}
-            className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_25px_rgba(37,99,235,0.5)] transition-all active-elevate-2 hover-elevate border-0"
+            disabled={isLoading || !prompt || isLimitReached}
+            className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_25px_rgba(37,99,235,0.5)] transition-all border-0"
           >
             {isLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Sparkles className="w-5 h-5 mr-2" />}
-            Generate Draft
+            {isLimitReached ? "Daily Limit Reached" : "Generate Draft"}
           </Button>
         </motion.div>
 
-        {/* Result Panel */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -127,7 +134,7 @@ export default function EmailGenerator() {
                 <Mail className="w-8 h-8 opacity-50" />
               </div>
               <h3 className="text-xl font-medium text-white/80 mb-2">No content yet</h3>
-              <p>Fill out the configuration on the left and click generate to create a beautifully crafted email.</p>
+              <p>Fill out the form on the left and click generate to create your email draft.</p>
             </div>
           )}
         </motion.div>

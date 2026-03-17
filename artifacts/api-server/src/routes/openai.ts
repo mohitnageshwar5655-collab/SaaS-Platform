@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { conversations, messages } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { streamWithOpenAI, streamWithGemini } from "../lib/aiClient";
 import {
   CreateOpenaiConversationBody,
   SendOpenaiMessageBody,
@@ -10,7 +10,7 @@ import {
 
 const router: IRouter = Router();
 
-router.get("/openai/conversations", async (req, res) => {
+router.get("/openai/conversations", async (_req, res) => {
   try {
     const rows = await db.select().from(conversations).orderBy(conversations.createdAt);
     res.json(rows);
@@ -78,6 +78,7 @@ router.post("/openai/conversations/:id/messages", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const body = SendOpenaiMessageBody.parse(req.body);
+    const aiModel: "openai" | "gemini" = (body as any).aiModel === "gemini" ? "gemini" : "openai";
 
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
     if (!conv) {
@@ -91,36 +92,38 @@ router.post("/openai/conversations/:id/messages", async (req, res) => {
       content: body.content,
     });
 
-    const history = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt);
-
-    const chatMessages = history.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: m.content,
-    }));
-
-    if (body.systemPrompt) {
-      chatMessages.unshift({ role: "system", content: body.systemPrompt });
-    }
+    const history = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, id))
+      .orderBy(messages.createdAt);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    const onChunk = (text: string) => {
+      res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+    };
+
+    const systemContent = body.systemPrompt || "You are a helpful, knowledgeable AI assistant. Be conversational, clear, and helpful.";
     let fullResponse = "";
 
-    const stream = await openai.chat.completions.create({
-      model: "gpt-5.2",
-      max_completion_tokens: 8192,
-      messages: chatMessages,
-      stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullResponse += content;
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
-      }
+    if (aiModel === "gemini") {
+      const geminiHistory = history.slice(0, -1).map(m => ({
+        role: m.role === "user" ? "user" as const : "model" as const,
+        parts: [{ text: m.content }],
+      }));
+      fullResponse = await streamWithGemini(systemContent, body.content, geminiHistory, onChunk);
+    } else {
+      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemContent },
+        ...history.map(m => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      ];
+      fullResponse = await streamWithOpenAI(chatMessages, onChunk);
     }
 
     await db.insert(messages).values({
@@ -131,9 +134,9 @@ router.post("/openai/conversations/:id/messages", async (req, res) => {
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
-    res.write(`data: ${JSON.stringify({ error: "Stream failed" })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: err?.message || "Stream failed" })}\n\n`);
     res.end();
   }
 });
