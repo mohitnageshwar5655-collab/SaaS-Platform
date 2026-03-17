@@ -129,6 +129,14 @@ export interface GenerateAiContentBody {
   programmingLanguage?: string;
 }
 
+export interface UsageStatus {
+  used: number;
+  limit: number;
+  remaining: number;
+  resetAt: string;
+  isLimitReached: boolean;
+}
+
 export interface GenerationHistoryItem {
   id: number;
   toolType: string;

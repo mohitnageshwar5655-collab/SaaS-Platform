@@ -209,3 +209,14 @@ export const GetGenerationHistoryResponseItem = zod.object({
 export const GetGenerationHistoryResponse = zod.array(
   GetGenerationHistoryResponseItem,
 );
+
+/**
+ * @summary Get current daily usage and limit
+ */
+export const GetUsageStatusResponse = zod.object({
+  used: zod.number(),
+  limit: zod.number(),
+  remaining: zod.number(),
+  resetAt: zod.date(),
+  isLimitReached: zod.boolean(),
+});

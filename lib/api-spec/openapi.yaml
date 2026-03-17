@@ -321,6 +321,19 @@ paths:
                 items:
                   $ref: "#/components/schemas/GenerationHistoryItem"
 
+  /tools/usage:
+    get:
+      operationId: getUsageStatus
+      tags: [tools]
+      summary: Get current daily usage and limit
+      responses:
+        "200":
+          description: Current usage status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageStatus"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -544,6 +557,27 @@ components:
       required:
         - toolType
         - prompt
+
+    UsageStatus:
+      type: object
+      properties:
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        resetAt:
+          type: string
+          format: date-time
+        isLimitReached:
+          type: boolean
+      required:
+        - used
+        - limit
+        - remaining
+        - resetAt
+        - isLimitReached
 
     GenerationHistoryItem:
       type: object

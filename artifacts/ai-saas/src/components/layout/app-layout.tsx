@@ -1,7 +1,11 @@
 import { Link, useLocation } from "wouter";
 // @ts-ignore
 import { useAuth } from "@workspace/replit-auth-web";
-import { Home, Mail, Share2, Code2, Languages, MessageSquare, History, Menu, X } from "lucide-react";
+import { useGetUsageStatus } from "@workspace/api-client-react";
+import {
+  Home, Mail, Share2, Code2, Languages, MessageSquare,
+  History, Menu, LogOut, Zap
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -10,13 +14,21 @@ import { motion, AnimatePresence } from "framer-motion";
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const auth = useAuth();
-  // Fallback gracefully if auth is not fully configured
   const isAuthenticated = auth?.isAuthenticated ?? false;
   const user = auth?.user ?? null;
   const login = auth?.login ?? (() => {});
   const logout = auth?.logout ?? (() => {});
-
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const { data: usageData, refetch: refetchUsage } = useGetUsageStatus({
+    query: { refetchInterval: 30000 }
+  });
+
+  const used = usageData?.used ?? 0;
+  const limit = usageData?.limit ?? 10;
+  const remaining = usageData?.remaining ?? limit;
+  const isLimitReached = usageData?.isLimitReached ?? false;
+  const usagePct = Math.min(100, Math.round((used / limit) * 100));
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: Home },
@@ -33,41 +45,102 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="p-6 flex items-center gap-3 border-b border-white/5">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 p-0.5 shadow-lg shadow-indigo-500/25">
           <div className="w-full h-full bg-card rounded-[10px] flex items-center justify-center overflow-hidden">
-            <img src={`${import.meta.env.BASE_URL}images/logo-icon.png`} alt="Logo" className="w-8 h-8 object-contain" />
+            <img
+              src={`${import.meta.env.BASE_URL}images/logo-icon.png`}
+              alt="Logo"
+              className="w-8 h-8 object-contain"
+            />
           </div>
         </div>
-        <span className="font-display font-bold text-xl tracking-tight text-white text-glow">AISaaS</span>
+        <span className="font-display font-bold text-xl tracking-tight text-white">AISaaS</span>
       </div>
-      
+
       <div className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 px-2">Toolkit</div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 px-2">
+          Toolkit
+        </div>
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
             <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)}>
-              <div className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group",
-                isActive 
-                  ? "bg-indigo-500/15 text-indigo-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]" 
-                  : "text-muted-foreground hover:bg-white/5 hover:text-white"
-              )}>
-                <item.icon className={cn("w-5 h-5", isActive ? "text-indigo-400" : "group-hover:text-white")} />
+              <div
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group",
+                  isActive
+                    ? "bg-indigo-500/15 text-indigo-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
+                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
+                )}
+              >
+                <item.icon
+                  className={cn("w-5 h-5", isActive ? "text-indigo-400" : "group-hover:text-white")}
+                />
                 <span className="font-medium text-sm">{item.label}</span>
                 {isActive && (
-                  <motion.div layoutId="active-nav" className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,1)]" />
+                  <motion.div
+                    layoutId="active-nav"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,1)]"
+                  />
                 )}
               </div>
             </Link>
           );
         })}
       </div>
-      
-      <div className="p-4 border-t border-white/5 bg-black/20">
-        <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-white mb-1">Upgrade to Pro</h4>
-          <p className="text-xs text-muted-foreground mb-3">Get unlimited generations and advanced models.</p>
-          <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">
-            View Plans
+
+      {/* Usage Card */}
+      <div className="p-4 border-t border-white/5 bg-black/20 space-y-3">
+        <div className={cn(
+          "rounded-xl p-4 border",
+          isLimitReached
+            ? "bg-red-500/10 border-red-500/30"
+            : "bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20"
+        )}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <Zap className={cn("w-3.5 h-3.5", isLimitReached ? "text-red-400" : "text-indigo-400")} />
+              <h4 className="text-xs font-semibold text-white">Daily Usage</h4>
+            </div>
+            <span className={cn(
+              "text-xs font-bold tabular-nums",
+              isLimitReached ? "text-red-400" : remaining <= 3 ? "text-yellow-400" : "text-indigo-300"
+            )}>
+              {used}/{limit}
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-2">
+            <motion.div
+              className={cn(
+                "h-full rounded-full",
+                isLimitReached
+                  ? "bg-red-500"
+                  : usagePct >= 70
+                  ? "bg-yellow-500"
+                  : "bg-indigo-500"
+              )}
+              initial={{ width: 0 }}
+              animate={{ width: `${usagePct}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground mb-3">
+            {isLimitReached
+              ? "Limit reached. Resets at midnight."
+              : `${remaining} generation${remaining !== 1 ? "s" : ""} remaining today`}
+          </p>
+
+          <Button
+            size="sm"
+            className={cn(
+              "w-full text-white shadow-lg text-xs",
+              isLimitReached
+                ? "bg-red-600 hover:bg-red-500 shadow-red-500/20"
+                : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20"
+            )}
+          >
+            {isLimitReached ? "Upgrade for Unlimited" : "Upgrade to Pro"}
           </Button>
         </div>
       </div>
@@ -85,13 +158,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <AnimatePresence>
         {mobileOpen && (
           <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden"
               onClick={() => setMobileOpen(false)}
             />
-            <motion.aside 
-              initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="fixed inset-y-0 left-0 w-[280px] border-r border-white/10 bg-card z-50 flex flex-col shadow-2xl"
             >
               <SidebarContent />
@@ -102,42 +180,96 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 h-screen relative">
-        <img 
-          src={`${import.meta.env.BASE_URL}images/hero-bg.png`} 
-          alt="Hero Background" 
-          className="absolute inset-0 w-full h-full object-cover opacity-15 pointer-events-none mix-blend-screen z-0" 
+        <img
+          src={`${import.meta.env.BASE_URL}images/hero-bg.png`}
+          alt="Hero Background"
+          className="absolute inset-0 w-full h-full object-cover opacity-15 pointer-events-none mix-blend-screen z-0"
         />
-        
+
         {/* Header */}
         <header className="h-16 border-b border-white/5 bg-background/50 backdrop-blur-xl flex items-center justify-between px-6 z-10 sticky top-0">
           <div className="flex items-center gap-4 lg:hidden">
-            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="text-white hover:bg-white/10">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileOpen(true)}
+              className="text-white hover:bg-white/10"
+            >
               <Menu className="w-5 h-5" />
             </Button>
             <span className="font-display font-bold text-lg text-white">AISaaS</span>
           </div>
-          
-          <div className="hidden lg:block text-sm font-medium text-muted-foreground">
+
+          <div className="hidden lg:flex items-center gap-2 text-sm font-medium text-muted-foreground">
             Welcome back to your workspace
+            {isLimitReached && (
+              <span className="ml-2 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-xs font-semibold border border-red-500/20">
+                Limit Reached
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4 ml-auto">
             {isAuthenticated ? (
               <div className="flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                <img src={user?.profileImageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`} className="w-7 h-7 rounded-full bg-black/50" alt="Profile" />
-                <span className="text-sm font-medium hidden sm:block text-white">{user?.firstName || 'User'}</span>
+                <img
+                  src={
+                    user?.profileImageUrl ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`
+                  }
+                  className="w-7 h-7 rounded-full bg-black/50"
+                  alt="Profile"
+                />
+                <span className="text-sm font-medium hidden sm:block text-white">
+                  {user?.firstName || "User"}
+                </span>
                 <div className="w-px h-4 bg-white/10 mx-1 hidden sm:block" />
-                <Button variant="ghost" size="icon" onClick={logout} className="h-7 w-7 text-muted-foreground hover:text-white hover:bg-white/10" title="Log Out">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={logout}
+                  className="h-7 w-7 text-muted-foreground hover:text-white hover:bg-white/10"
+                  title="Log Out"
+                >
                   <LogOut className="w-4 h-4" />
                 </Button>
               </div>
             ) : (
-              <Button onClick={login} className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full px-6 shadow-lg shadow-indigo-500/20 active-elevate-2 hover-elevate">
+              <Button
+                onClick={login}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full px-6 shadow-lg shadow-indigo-500/20"
+              >
                 Sign In
               </Button>
             )}
           </div>
         </header>
+
+        {/* Limit reached banner */}
+        <AnimatePresence>
+          {isLimitReached && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-red-500/10 border-b border-red-500/20 z-10 overflow-hidden"
+            >
+              <div className="px-6 py-2.5 flex items-center gap-3">
+                <Zap className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <p className="text-sm text-red-300">
+                  You've used all <span className="font-semibold">{limit} free generations</span> for today.
+                  Your limit resets at midnight.
+                </p>
+                <Button
+                  size="sm"
+                  className="ml-auto bg-red-600 hover:bg-red-500 text-white text-xs px-4 flex-shrink-0"
+                >
+                  Upgrade to Pro
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Scrollable Page Content */}
         <div className="flex-1 p-4 md:p-8 overflow-y-auto z-10">

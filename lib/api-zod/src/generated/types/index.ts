@@ -29,3 +29,4 @@ export * from "./openaiError";
 export * from "./openaiMessage";
 export * from "./sendOpenaiMessageBody";
 export * from "./sendOpenaiVoiceMessageBody";
+export * from "./usageStatus";

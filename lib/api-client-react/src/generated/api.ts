@@ -35,6 +35,7 @@ import type {
   OpenaiError,
   OpenaiMessage,
   SendOpenaiMessageBody,
+  UsageStatus,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -1397,6 +1398,81 @@ export function useGetGenerationHistory<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetGenerationHistoryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get current daily usage and limit
+ */
+export const getGetUsageStatusUrl = () => {
+  return `/api/tools/usage`;
+};
+
+export const getUsageStatus = async (
+  options?: RequestInit,
+): Promise<UsageStatus> => {
+  return customFetch<UsageStatus>(getGetUsageStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetUsageStatusQueryKey = () => {
+  return [`/api/tools/usage`] as const;
+};
+
+export const getGetUsageStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getUsageStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getUsageStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetUsageStatusQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getUsageStatus>>> = ({
+    signal,
+  }) => getUsageStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getUsageStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetUsageStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getUsageStatus>>
+>;
+export type GetUsageStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get current daily usage and limit
+ */
+
+export function useGetUsageStatus<
+  TData = Awaited<ReturnType<typeof getUsageStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getUsageStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetUsageStatusQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
