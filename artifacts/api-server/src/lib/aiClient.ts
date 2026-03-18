@@ -4,17 +4,19 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export type AIModel = "openai" | "gemini";
 
 export function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const integrationKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const integrationBaseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const directKey = process.env.OPENAI_API_KEY;
 
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set.");
+  if (integrationKey && integrationBaseURL) {
+    return new OpenAI({ apiKey: integrationKey, baseURL: integrationBaseURL });
   }
 
-  return new OpenAI({
-    apiKey,
-    ...(baseURL ? { baseURL } : {}),
-  });
+  if (directKey) {
+    return new OpenAI({ apiKey: directKey });
+  }
+
+  throw new Error("No OpenAI API key found. Set OPENAI_API_KEY or provision the Replit OpenAI integration.");
 }
 
 export function getGeminiClient(): GoogleGenerativeAI {
